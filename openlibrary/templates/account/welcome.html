@@ -1,0 +1,168 @@
+$def with (step, username, genres, selected_genres, goal_year, current_goal)
+
+$var title: $_("Welcome to Open Library")
+
+<div id="contentHead">
+  <h1>$_("Welcome to Open Library")</h1>
+  <p class="sansserif grey">
+    $if step == 1:
+      $_("Let's get you started. What kinds of books do you enjoy?")
+    $elif step == 2:
+      $_("Great! Now set a reading goal for this year.")
+    $elif step == 3:
+      $_("You're all set — search for a book to add to your reading log.")
+    $else:
+      $_("Your reading space is ready.")
+  </p>
+</div>
+
+<div id="contentBody">
+
+  $# --------------- Step indicator ---------------
+  <div class="onboarding-steps sansserif small grey" style="margin-bottom: 1.5em; display: flex; gap: 1em; align-items: center;">
+    <span $cond(step == 1, 'style="font-weight:bold; color:#000;"', '')>
+      $_("1. Interests")
+    </span>
+    <span>&rsaquo;</span>
+    <span $cond(step == 2, 'style="font-weight:bold; color:#000;"', '')>
+      $_("2. Reading Goal")
+    </span>
+    <span>&rsaquo;</span>
+    <span $cond(step == 3, 'style="font-weight:bold; color:#000;"', '')>
+      $_("3. Find a Book")
+    </span>
+  </div>
+
+  $# =============================================
+  $# STEP 1 — Genre selection
+  $# =============================================
+  $if step == 1:
+    <form method="POST" action="/account/welcome?step=1" class="olform" id="onboarding-genres-form">
+      <div style="display: flex; flex-wrap: wrap; gap: 0.75em; margin-bottom: 1.5em;">
+        $for genre in genres:
+          $ bg_color = "#e8f4fd" if genre in selected_genres else "#fff"
+          $ checked = 'checked="checked"' if genre in selected_genres else ""
+          <label class="onboarding-chip" style="
+            display: inline-flex; align-items: center; gap: 0.4em;
+            padding: 0.4em 1em; border: 2px solid #ccc; border-radius: 999px;
+            cursor: pointer; font-size: 0.95em;
+            background: $bg_color;
+          ">
+            <input type="checkbox" name="genres" value="$genre" $:checked style="accent-color: #2b69a3;">
+            $genre
+          </label>
+      </div>
+      <p class="small grey">$_("Pick at least one to continue.")</p>
+      <div style="display: flex; gap: 1em; align-items: center; margin-top: 1em;">
+        <button type="submit" class="cta-btn cta-btn--shell" name="action" value="next">
+          $_("Next: Set a Reading Goal") &rarr;
+        </button>
+        <a href="/account/welcome?step=2&amp;skip=1" class="small grey" style="text-decoration: underline;">
+          $_("Skip for now")
+        </a>
+      </div>
+    </form>
+
+  $elif step == 2:
+    $# =============================================
+    $# STEP 2 — Reading goal
+    $# =============================================
+    $if current_goal:
+      <div id="welcome-goal-wrapper" class="yearly-goal-section">
+        <p>
+          $:render_template('reading_goals/reading_goal_progress', [current_goal])
+        </p>
+        <script>
+          // Automatic refresh so the server-rendered template matches the edited goal
+          window.addEventListener('DOMContentLoaded', () => {
+             const m = document.querySelector('#welcome-goal-wrapper dialog');
+             if (m) {
+                 m.addEventListener('close', () => window.location.reload());
+             }
+          });
+        </script>
+      </div>
+      <div style="margin-top: 1.5em;">
+        <form method="POST" action="/account/welcome?step=2" style="display:inline;">
+          <button type="submit" class="cta-btn cta-btn--shell">
+            $_("Continue") &rarr;
+          </button>
+        </form>
+      </div>
+    $else:
+      <form method="POST" action="/account/welcome?step=2" class="olform">
+        <input type="hidden" name="year" value="$goal_year">
+        <div style="margin-bottom: 1em;">
+          <span>$_("How many books would you like to read this year?")</span>
+        </div>
+        <div style="display: flex; gap: 0.75em; align-items: center; margin-bottom: 1.5em;">
+          <input
+            type="number"
+            name="goal"
+            min="1"
+            max="10000"
+            step="1"
+            value="5"
+            style="width: 80px; padding: 0.4em 0.5em; font-size: 1em; border: 1px solid #ccc; border-radius: 4px;"
+            required
+          >
+          <span class="small grey">$_("books")</span>
+        </div>
+        <div style="display: flex; gap: 1em; align-items: center;">
+          <button type="submit" class="cta-btn cta-btn--shell">
+            $_("Set Goal &amp; Continue") &rarr;
+          </button>
+          <a href="/account/welcome?step=3" class="small grey" style="text-decoration: underline;">
+            $_("Skip for now")
+          </a>
+        </div>
+      </form>
+
+  $elif step == 3:
+    $# =============================================
+    $# STEP 3 — Search prompt
+    $# =============================================
+    <p class="sansserif">
+      $_("You're ready to start your reading log. Browse what other readers are adding and click 'Want to Read' on any book to add it to your shelf.")
+    </p>
+
+    <div style="margin: 1.5em 0;">
+      <form method="POST" action="/account/welcome?step=3&amp;action=trending" style="display:inline;">
+        <button type="submit" class="cta-btn cta-btn--shell">
+          $_("Browse Trending Books") &rarr;
+        </button>
+      </form>
+    </div>
+
+    $if selected_genres:
+      <p class="sansserif small grey">
+        $_("Or search by one of your interests:")
+        $for genre in selected_genres:
+          <a href="/search?q=subject:$genre&amp;has_fulltext=true" style="margin-right: 0.5em; text-decoration: underline;">$genre</a>
+      </p>
+    $else:
+      <p class="sansserif small grey">
+        $_("Or") <a href="/search" style="text-decoration: underline;">$_("search by title or author")</a>.
+      </p>
+
+    <div style="margin-top: 2em; display: flex; gap: 1em; align-items: center; flex-wrap: wrap;">
+      <form method="POST" action="/account/welcome?step=3" style="display:inline;">
+        <button type="submit" class="cta-btn cta-btn--shell">
+          $_("Go to My Books") &rarr;
+        </button>
+      </form>
+      <span class="small grey">$_("or")</span>
+      <a href="/account/import" class="small grey" style="text-decoration: underline;">
+        $_("Import from Goodreads")
+      </a>
+    </div>
+
+  $else:
+    $# =============================================
+    $# Fallback — invalid step, go to step 1
+    $# =============================================
+    <p>$_("Let's start your onboarding.")</p>
+    <a href="/account/welcome?step=1" class="cta-btn cta-btn--shell">$_("Get Started")</a>
+
+
+</div>

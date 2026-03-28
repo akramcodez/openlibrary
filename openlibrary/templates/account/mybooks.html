@@ -31,7 +31,16 @@ $def year_span(year, use_local_year=False):
     <div class="carousel-section-header">
       <h2 class="home-h2"><a name="$key" href="$url">$title</a></h2>
     </div>
-    <p>$_("No books are on this shelf")</p>
+    $if key == "loans":
+      <p>$_("No active loans.") <a href="/search?has_fulltext=true">$_("Find a book to borrow")</a> $_("from the Open Library collection.")</p>
+    $elif key == "currently-reading":
+      <p>$_("Nothing in progress.") <a href="/trending/now">$_("Browse trending books")</a> $_("and mark one as 'Currently Reading'.")</p>
+    $elif key == "want-to-read":
+      <p>$_("Your reading list is empty.") <a href="/trending/now">$_("Browse trending books")</a> $_("to find your next read.")</p>
+    $elif key == "already-read":
+      <p>$_("No books logged yet.") <a href="/search">$_("Search for books you've finished")</a> $_("to track your reading history.")</p>
+    $else:
+      <p>$_("No books are on this shelf.") <a href="/trending/now">$_("Browse trending books")</a> $_("to get started.")</p>
 
   $# Data for carousels
   $ readlog_url = "/people/%s/books/" % username
@@ -73,6 +82,7 @@ $def empty_mobile_carousel(data):
     <div class="carousel-section-header">
       <a class="li-title-desktop" name="$key" href="$url">$title (0)<img class="icon-link__image li-count" src="/static/images/icons/right-chevron.svg"></a>
     </div>
+    <p class="small"><a href="/trending/now">$_("Browse trending books")</a> $_("to get started.")</p>
 
   $ component_times['Sidebar'] = time()
   <div class="mybooks-menu-mobile">

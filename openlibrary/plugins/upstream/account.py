@@ -50,7 +50,9 @@ from openlibrary.plugins.openlibrary.pd import get_pd_options, get_pd_org
 from openlibrary.plugins.recaptcha import recaptcha
 from openlibrary.plugins.upstream import borrow, forms
 from openlibrary.plugins.upstream.mybooks import MyBooksTemplate
-from openlibrary.utils.dateutil import elapsed_time
+from openlibrary.plugins.upstream.yearly_reading_goals import get_reading_goals
+from openlibrary.core.yearly_reading_goals import YearlyReadingGoals
+from openlibrary.utils.dateutil import current_year, elapsed_time
 
 if TYPE_CHECKING:
     from openlibrary.plugins.upstream.models import User, Work
@@ -561,7 +563,21 @@ class account_login(delegate.page):
             add_flash_message('note', _(flash_message))
 
         if i.redirect == "" or any(path in i.redirect for path in blacklist):
-            i.redirect = "/account/books"
+            # Check if user needs onboarding
+            if ol_account:
+                user_prefs = ol_account.get_user().preferences()
+
+                # BACKDOOR FOR VIDEO RECORDING: http://localhost:8080/account/login?reset=1
+                if i.get('reset') == '1':
+                    ol_account.get_user().save_preferences({'onboarding_completed': ''})
+                    user_prefs['onboarding_completed'] = ''  # update local dict for check
+
+                if not user_prefs.get('onboarding_completed'):
+                    i.redirect = "/account/welcome"
+                else:
+                    i.redirect = "/account/books"
+            else:
+                i.redirect = "/account/books"
         stats.increment('ol.account.xauth.login')
         raise web.seeother(i.redirect)
 
@@ -798,6 +814,98 @@ class import_books(delegate.page):
         return MyBooksTemplate(username, 'imports').render(
             header_title=_("Imports and Exports"), template=template
         )
+
+
+class account_welcome(delegate.page):
+    """Onboarding flow for new users.
+
+    Steps are driven by the `step` query parameter:
+      step=1  Genre selection (POST saves prefs, redirect -> step=2)
+      step=2  Reading goal (renders existing goal form, link -> step=3)
+      step=3  Search prompt to add first book (link -> My Books)
+    """
+
+    path = "/account/welcome"
+
+    # All genres surfaced to the user during onboarding.
+    GENRES = [
+        "Fiction",
+        "Nonfiction",
+        "Science",
+        "History",
+        "Biography",
+        "Mystery",
+        "Fantasy",
+        "Science Fiction",
+        "Poetry",
+        "Children's",
+        "Comics",
+        "Romance",
+    ]
+
+    @require_login
+    def GET(self):
+        i = web.input(step=1, skip=None)
+        step = h.safeint(i.step) or 1
+        user = accounts.get_current_user()
+        username = user.key.split('/')[-1]
+        prefs = user.preferences()
+        selected_genres = prefs.get('pref_genres', '').split(',') if prefs.get('pref_genres') else []
+        year = current_year()
+        current_goal = get_reading_goals(year=year)
+        return render_template(
+            'account/welcome',
+            step=step,
+            username=username,
+            genres=self.GENRES,
+            selected_genres=selected_genres,
+            goal_year=year,
+            current_goal=current_goal,
+        )
+
+    @require_login
+    def POST(self):
+        """Handle step transitions and save onboarding state."""
+        i = web.input(step=1, genres=[], action='')
+        step = h.safeint(i.step) or 1
+        user = accounts.get_current_user()
+
+        if step == 1:
+            # Whitelist-validate genres and persist as a comma-separated preference.
+            genres = [g for g in i.genres if g in self.GENRES]
+            user.save_preferences({
+                'pref_genres': ','.join(genres),
+                'onboarding_step': '2',
+            })
+            raise web.seeother('/account/welcome?step=2')
+
+        elif step == 2:
+            # Save reading goal (if submitted) and advance to step 3.
+            goal = h.safeint(i.get('goal', 0)) or 0
+            year = h.safeint(i.get('year', 0)) or current_year()
+            if goal and goal > 0:
+                username = user.key.split('/')[-1]
+                try:
+                    YearlyReadingGoals.create(username, year, goal)
+                except Exception:
+                    pass  # goal may already exist; don't block progress
+            user.save_preferences({'onboarding_step': '3'})
+            raise web.seeother('/account/welcome?step=3')
+
+        elif step == 3:
+            # User clicked "Go to My Books" or "Browse Trending Books" — mark onboarding complete.
+            username = user.key.split('/')[-1]
+            user.save_preferences({
+                'onboarding_completed': 'yes',
+                'onboarding_step': '3',
+            })
+            if i.get('action') == 'trending':
+                raise web.seeother('/trending/now')
+            else:
+                raise web.seeother(f'/people/{username}/books')
+
+        # Fallback: restart flow.
+        raise web.seeother('/account/welcome?step=1')
 
 
 class fetch_goodreads(delegate.page):
